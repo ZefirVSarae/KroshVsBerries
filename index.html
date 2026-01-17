@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KROSH VS BERRIES</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #CFEFFE;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            cursor: crosshair;
+        }
+
+        #sky {
+            flex: 1;
+            background-color: #CFEFFE;
+        }
+
+        #ground {
+            position: relative;
+            height: 60px;
+            background-color: #8EB028;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 15;
+            pointer-events: all;
+        }
+
+        #wave-info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 10px 30px;
+            border-radius: 30px;
+            font-family: 'Arial', sans-serif;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 50;
+            border: 2px solid #fff;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        #player-ui {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 250px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 15px;
+            border: 2px solid white;
+            z-index: 50;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        .hp-bar-bg {
+            width: 100%;
+            height: 20px;
+            background: #444;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+            border: 1px solid #fff;
+        }
+
+        #player-hp-fill {
+            width: 100%;
+            height: 100%;
+            background: #2ecc71;
+            transition: width 0.3s ease, background 0.3s ease;
+        }
+
+        canvas#grassCanvas {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 250px; 
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        #character-container {
+            position: absolute;
+            bottom: 0px; 
+            left: 20px;
+            width: 280px; 
+            height: auto;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #character {
+            width: 100%;
+            height: auto;
+            transition: filter 0.2s;
+        }
+
+        #cooldown-indicator {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 4px solid #fff;
+            border-radius: 50%;
+            display: none; 
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            font-size: 20px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #game-over {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            color: white;
+            font-family: sans-serif;
+            text-align: center;
+        }
+
+        #game-over h1 {
+            font-size: 4rem;
+            margin-bottom: 10px;
+            color: #ff416c;
+        }
+
+        #game-over button {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            background: #8EB028;
+            border: none;
+            color: white;
+            border-radius: 10px;
+            transition: background 0.2s;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="wave-info">ВОЛНА 1</div>
+    
+    <div id="player-ui">
+        <div style="font-weight: bold; margin-bottom: 5px;">ЗДОРОВЬЕ КРОША</div>
+        <div class="hp-bar-bg">
+            <div id="player-hp-fill"></div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    <div id="sky"></div>
+    <div id="ground">
+        <canvas id="grassCanvas"></canvas>
+        <div id="character-container">
+            <img id="character" src="https://www.dropbox.com/scl/fi/580xyv7tacwkn6dikl9ql/1768656130612.png?rlkey=49fciol8ib6rtsuketn1dyhkt&st=7u8uwt9s&dl=1" alt="Крош">
+            <div id="cooldown-indicator">0.3</div>
+        </div>
+    </div>
+</div>
+
+<div id="game-over">
+    <h1 id="death-reason">ПРОИГРЫШ</h1>
+    <div id="final-wave" style="font-size: 1.5rem; margin-bottom: 10px;">Волна: 1</div>
+    <div id="final-bosses" style="font-size: 1.2rem; color: #aaa;">Боссов побеждено: 0</div>
+    <button onclick="restartGame()">ЗАНОГО</button>
+</div>
+
+<script>
+    const grassCanvas = document.getElementById('grassCanvas');
+    const grassCtx = grassCanvas.getContext('2d');
+    const gameCanvas = document.getElementById('gameCanvas');
+    const ctx = gameCanvas.getContext('2d');
+    
+    const gameOverScreen = document.getElementById('game-over');
+    const deathReasonText = document.getElementById('death-reason');
+    const waveInfoText = document.getElementById('wave-info');
+    const finalWaveText = document.getElementById('final-wave');
+    const finalBossesText = document.getElementById('final-bosses');
+    const character = document.getElementById('character');
+    const playerHpFill = document.getElementById('player-hp-fill');
+    const cooldownElement = document.getElementById('cooldown-indicator');
+
+    const berrySources = [
+        'https://www.dropbox.com/scl/fi/ysyyww85sryyeoe6l86c9/pngwing.com.png?rlkey=bkqay85zanhpsfugea2abdj3o&st=b6io9ctf&dl=1',
+        'https://www.dropbox.com/scl/fi/0fb4nvr6k46q7cpwuvrqy/pngwing.com-1.png?rlkey=o6dtvp265f56zxb099mkiuc4z&st=34nh89np&dl=1',
+        'https://www.dropbox.com/scl/fi/tal6yp2matt0j7s3bsjse/pngwing.com-2.png?rlkey=o2ueb4b2j4j5djvwtujqwu055&st=0h1gkp61&dl=1'
+    ];
+    const bossSource = 'https://www.dropbox.com/scl/fi/yr5qwr40xs5cxch379qse/1768658195025.png?rlkey=zps7eu50qfobub2efooaa3ing&st=c5nilk2n&dl=1';
+
+    const berryImages = [];
+    const bossImage = new Image();
+    bossImage.src = bossSource;
+
+    let imagesLoaded = 0;
+    berrySources.forEach(src => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => {
+            imagesLoaded++;
+            if(imagesLoaded === berrySources.length) startGameLoop();
+        };
+        berryImages.push(img);
+    });
+
+    let berries = [];
+    let flashes = [];
+    let isGameOver = false;
+    let canShoot = true;
+    const cooldownTime = 300; 
+
+    let playerHp = 100;
+    let currentWave = 1;
+    let spawnedInWave = 0;
+    let spawnTimeout;
+    let bossesDefeated = 0;
+    let bossActive = false;
+
+    const BERRY_SIZE = 300;
+    const BOSS_SIZE = 550;
+
+    function startGameLoop() {
+        resize();
+        spawnBerry();
+        update();
+    }
+
+    function resize() {
+        gameCanvas.width = window.innerWidth;
+        gameCanvas.height = window.innerHeight;
+        drawGrass();
+    }
+
+    function drawGrass() {
+        const rect = grassCanvas.getBoundingClientRect();
+        grassCanvas.width = rect.width;
+        grassCanvas.height = rect.height;
+        grassCtx.clearRect(0, 0, grassCanvas.width, grassCanvas.height);
+        const density = Math.floor(grassCanvas.width / 4); 
+        grassCtx.strokeStyle = '#8EB028';
+        grassCtx.lineCap = 'round';
+        for (let i = 0; i < density; i++) {
+            const x = Math.random() * grassCanvas.width;
+            const height = 70 + Math.random() * 80; 
+            const lean = (Math.random() - 0.5) * 40; 
+            grassCtx.beginPath();
+            grassCtx.lineWidth = 3 + Math.random() * 2; 
+            grassCtx.moveTo(x, grassCanvas.height);
+            grassCtx.quadraticCurveTo(x + lean * 0.5, grassCanvas.height - height * 0.5, x + lean, grassCanvas.height - height);
+            grassCtx.stroke();
+        }
+    }
+
+    function updatePlayerHpUI() {
+        playerHpFill.style.width = playerHp + '%';
+        if (playerHp > 50) playerHpFill.style.background = '#2ecc71';
+        else if (playerHp > 25) playerHpFill.style.background = '#f1c40f';
+        else playerHpFill.style.background = '#e74c3c';
+    }
+
+    function spawnBerry() {
+        if (isGameOver) return;
+        if (spawnedInWave >= getWaveSize()) return;
+        
+        const waveSpeedBonus = (currentWave - 1) * 0.15;
+        
+        berries.push({
+            img: berryImages[Math.floor(Math.random() * berryImages.length)],
+            x: gameCanvas.width,
+            y: -BERRY_SIZE / 2,
+            vx: -(1.5 + Math.random() * 1.5 + waveSpeedBonus),
+            vy: 0.8 + Math.random() * 1 + (waveSpeedBonus / 2),
+            hp: 100,
+            maxHp: 100,
+            hitTimer: 0,
+            isBoss: false,
+            size: BERRY_SIZE
+        });
+
+        spawnedInWave++;
+        const delay = Math.max(600, 3000 - (currentWave * 150));
+        spawnTimeout = setTimeout(spawnBerry, delay);
+    }
+
+    function spawnBoss() {
+        if (bossActive) return;
+        bossActive = true;
+        const bossHp = 250 + (Math.floor(currentWave / 5) - 1) * 100;
+        
+        berries.push({
+            img: bossImage,
+            x: gameCanvas.width,
+            y: -BOSS_SIZE / 3,
+            vx: -0.4, 
+            vy: 0.2,
+            hp: bossHp,
+            maxHp: bossHp,
+            hitTimer: 0,
+            isBoss: true,
+            size: BOSS_SIZE
+        });
+        
+        waveInfoText.innerHTML = `<span style="color: #ff416c">БОСС: АРБУЗ</span>`;
+    }
+
+    function getWaveSize() {
+        return 3 + (currentWave * 2);
+    }
+
+    function startCooldown() {
+        canShoot = false;
+        cooldownElement.style.display = 'flex';
+        let startTime = Date.now();
+        const int = setInterval(() => {
+            const rem = Math.max(0, (cooldownTime - (Date.now() - startTime)) / 1000);
+            cooldownElement.innerText = rem.toFixed(1);
+            cooldownElement.style.opacity = rem / (cooldownTime / 1000);
+            if (rem <= 0) {
+                clearInterval(int);
+                cooldownElement.style.display = 'none';
+                canShoot = true;
+            }
+        }, 30);
+    }
+
+    function playShootSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        } catch(e) {}
+    }
+
+    gameCanvas.onmousedown = (e) => {
+        if (isGameOver || !canShoot) return;
+        
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        for (let i = berries.length - 1; i >= 0; i--) {
+            const b = berries[i];
+            const padding = b.size * 0.15;
+            if (mouseX >= b.x + padding && mouseX <= b.x + b.size - padding &&
+                mouseY >= b.y + padding && mouseY <= b.y + b.size - padding) {
+                
+                const damage = 25 + Math.floor(Math.random() * 11);
+                b.hp -= damage;
+                b.hitTimer = 5;
+
+                if (b.hp <= 0) {
+                    if (b.isBoss) {
+                        bossActive = false;
+                        bossesDefeated++;
+                        berries.splice(i, 1);
+                        startNextWave();
+                    } else {
+                        berries.splice(i, 1);
+                        checkWaveProgress();
+                    }
+                }
+                break; 
+            }
+        }
+
+        flashes.push({ x: 260, y: window.innerHeight - 120, life: 10 });
+        playShootSound();
+        startCooldown();
+    };
+
+    function startNextWave() {
+        currentWave++;
+        spawnedInWave = 0;
+        waveInfoText.innerText = `ВОЛНА ${currentWave}`;
+        clearTimeout(spawnTimeout);
+        setTimeout(spawnBerry, 2000);
+    }
+
+    function checkWaveProgress() {
+        if (berries.length === 0 && spawnedInWave >= getWaveSize()) {
+            if (currentWave % 5 === 0 && !bossActive) {
+                spawnBoss();
+                return;
+            }
+            if (!bossActive) {
+                startNextWave();
+            }
+        }
+    }
+
+    function update() {
+        if (isGameOver) return;
+
+        ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+        const charRect = character.getBoundingClientRect();
+
+        // Хитбокс персонажа
+        const charHitX = charRect.left;
+        const charHitY = charRect.top;
+        const charHitW = charRect.width;
+        const charHitH = charRect.height;
+
+        for (let i = berries.length - 1; i >= 0; i--) {
+            const b = berries[i];
+            b.x += b.vx;
+            b.y += b.vy;
+
+            ctx.save();
+            if (b.hitTimer > 0) {
+                ctx.filter = 'sepia(1) saturate(10) hue-rotate(-50deg)';
+                b.hitTimer--;
+            }
+            ctx.drawImage(b.img, b.x, b.y, b.size, b.size);
+            ctx.restore();
+
+            // ОБНОВЛЕННЫЙ ИНДИКАТОР HP (Овальный в середине с текстом)
+            const centerX = b.x + b.size / 2;
+            const centerY = b.y + b.size / 2;
+            const ovalW = b.isBoss ? 100 : 70;
+            const ovalH = b.isBoss ? 40 : 30;
+
+            // Отрисовка овала фона
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, ovalW / 2, ovalH / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Отрисовка обводки овала
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Текст HP в середине
+            ctx.fillStyle = b.hp < 30 ? '#ff416c' : '#ffffff';
+            ctx.font = `bold ${b.isBoss ? 18 : 14}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(Math.max(0, b.hp), centerX, centerY);
+
+            // КОЛЛИЗИЯ: Увеличенная зона по вертикали, чтобы не пролетали сверху
+            // Мы проверяем не только центр ягоды, но и ее нижнюю часть
+            const berryHitX = b.x + b.size * 0.1;
+            const berryHitY = b.y; // С самого верха картинки ягоды
+            const berryHitW = b.size * 0.8;
+            const berryHitH = b.size; // На всю высоту ягоды
+
+            if (berryHitX < charHitX + charHitW &&
+                berryHitX + berryHitW > charHitX &&
+                berryHitY < charHitY + charHitH &&
+                berryHitY + berryHitH > charHitY) {
+                
+                const damage = b.isBoss ? 100 : 34;
+                playerHp -= damage;
+                updatePlayerHpUI();
+                
+                character.style.filter = 'brightness(0.5) sepia(1) hue-rotate(-50deg) saturate(5)';
+                setTimeout(() => { if(!isGameOver) character.style.filter = 'none'; }, 200);
+
+                if (playerHp <= 0) {
+                    playerHp = 0;
+                    updatePlayerHpUI();
+                    endGame(b.isBoss ? "АРБУЗ РАЗДАВИЛ ТЕБЯ" : "ЯГОДЫ ПОБЕДИЛИ");
+                }
+
+                if (!b.isBoss) {
+                    berries.splice(i, 1);
+                    checkWaveProgress();
+                    continue;
+                }
+            }
+
+            if (b.x < -b.size || b.y > gameCanvas.height) {
+                const wasBoss = b.isBoss;
+                berries.splice(i, 1);
+                if (wasBoss) {
+                    bossActive = false;
+                    startNextWave();
+                } else {
+                    checkWaveProgress();
+                }
+            }
+        }
+
+        if (berries.length === 0 && spawnedInWave >= getWaveSize()) {
+            checkWaveProgress();
+        }
+
+        for (let i = flashes.length - 1; i >= 0; i--) {
+            const f = flashes[i];
+            const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 60);
+            grad.addColorStop(0, 'white');
+            grad.addColorStop(0.4, 'orange');
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, 60, 0, Math.PI * 2);
+            ctx.fill();
+            f.life--;
+            if (f.life <= 0) flashes.splice(i, 1);
+        }
+
+        requestAnimationFrame(update);
+    }
+
+    function endGame(reason) {
+        isGameOver = true;
+        gameOverScreen.style.display = 'flex';
+        deathReasonText.innerText = reason || "ПРОИГРЫШ";
+        finalWaveText.innerText = `Волна: ${currentWave}`;
+        finalBossesText.innerText = `Боссов побеждено: ${bossesDefeated}`;
+        clearTimeout(spawnTimeout);
+    }
+
+    function restartGame() {
+        isGameOver = false;
+        canShoot = true;
+        playerHp = 100;
+        currentWave = 1;
+        spawnedInWave = 0;
+        bossesDefeated = 0;
+        bossActive = false;
+        berries = [];
+        flashes = [];
+        character.style.filter = 'none';
+        updatePlayerHpUI();
+        waveInfoText.innerText = `ВОЛНА 1`;
+        gameOverScreen.style.display = 'none';
+        spawnBerry();
+        update();
+    }
+
+    window.addEventListener('resize', resize);
+    updatePlayerHpUI();
+</script>
+
+</body>
+</html>
