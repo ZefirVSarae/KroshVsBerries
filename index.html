@@ -141,6 +141,45 @@
             pointer-events: none;
         }
 
+        /* Окно прокачки */
+        #upgrade-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            color: white;
+            font-family: 'Arial', sans-serif;
+        }
+
+        .upgrade-card {
+            background: #2c3e50;
+            width: 350px;
+            padding: 15px;
+            margin: 10px;
+            border-radius: 10px;
+            border: 2px solid #8EB028;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .upgrade-card:hover {
+            transform: scale(1.05);
+            background: #34495e;
+        }
+
+        .upgrade-card h3 { margin: 0; font-size: 18px; }
+        .upgrade-card p { margin: 5px 0 0; font-size: 14px; color: #bdc3c7; }
+
         #game-over {
             position: fixed;
             top: 0;
@@ -183,7 +222,7 @@
     <div id="wave-info">ВОЛНА 1</div>
     
     <div id="player-ui">
-        <div style="font-weight: bold; margin-bottom: 5px;">ЗДОРОВЬЕ КРОША</div>
+        <div id="hp-text" style="font-weight: bold; margin-bottom: 5px;">ЗДОРОВЬЕ: 100 / 100</div>
         <div class="hp-bar-bg">
             <div id="player-hp-fill"></div>
         </div>
@@ -200,6 +239,39 @@
     </div>
 </div>
 
+<div id="upgrade-menu">
+    <h1 style="color: #8EB028; margin-bottom: 30px;">МАГАЗИН ПРОКАЧКИ</h1>
+    <div class="upgrade-card" onclick="applyUpgrade('maxHp')">
+        <div>
+            <h3>УВЕЛИЧИТЬ ХП</h3>
+            <p>+25 к макс. здоровью</p>
+        </div>
+        <span id="lvl-maxHp">Lvl 0</span>
+    </div>
+    <div class="upgrade-card" onclick="applyUpgrade('berrySpeed')">
+        <div>
+            <h3>ЗАМЕДЛИТЬ ЯГОДЫ</h3>
+            <p>-10% к скорости полета</p>
+        </div>
+        <span id="lvl-berrySpeed">Lvl 0</span>
+    </div>
+    <div class="upgrade-card" onclick="applyUpgrade('playerDamage')">
+        <div>
+            <h3>УРОН ПЕРСОНАЖА</h3>
+            <p>+10 к силе клика</p>
+        </div>
+        <span id="lvl-playerDamage">Lvl 0</span>
+    </div>
+    <div class="upgrade-card" onclick="applyUpgrade('berryDamage')">
+        <div>
+            <h3>КРЕПКАЯ ШКУРКА</h3>
+            <p>-15% урон от ягод</p>
+        </div>
+        <span id="lvl-berryDamage">Lvl 0</span>
+    </div>
+    <p style="margin-top: 20px; color: #aaa;">Выберите одно улучшение, чтобы продолжить</p>
+</div>
+
 <div id="game-over">
     <h1 id="death-reason">ПРОИГРЫШ</h1>
     <div id="final-wave" style="font-size: 1.5rem; margin-bottom: 10px;">Волна: 1</div>
@@ -213,6 +285,7 @@
     const gameCanvas = document.getElementById('gameCanvas');
     const ctx = gameCanvas.getContext('2d');
     
+    const upgradeMenu = document.getElementById('upgrade-menu');
     const gameOverScreen = document.getElementById('game-over');
     const deathReasonText = document.getElementById('death-reason');
     const waveInfoText = document.getElementById('wave-info');
@@ -220,6 +293,7 @@
     const finalBossesText = document.getElementById('final-bosses');
     const character = document.getElementById('character');
     const playerHpFill = document.getElementById('player-hp-fill');
+    const hpText = document.getElementById('hp-text');
     const cooldownElement = document.getElementById('cooldown-indicator');
 
     const berrySources = [
@@ -247,10 +321,24 @@
     let berries = [];
     let flashes = [];
     let isGameOver = false;
+    let isPaused = false;
     let canShoot = true;
     const cooldownTime = 300; 
 
+    // Параметры прокачки
     let playerHp = 100;
+    let maxPlayerHp = 100;
+    let basePlayerDamage = 30; // 25-35 среднее
+    let speedMultiplier = 1.0;
+    let damageReduction = 1.0;
+    
+    let levels = {
+        maxHp: 0,
+        berrySpeed: 0,
+        playerDamage: 0,
+        berryDamage: 0
+    };
+
     let currentWave = 1;
     let spawnedInWave = 0;
     let spawnTimeout;
@@ -293,24 +381,38 @@
     }
 
     function updatePlayerHpUI() {
-        playerHpFill.style.width = playerHp + '%';
-        if (playerHp > 50) playerHpFill.style.background = '#2ecc71';
-        else if (playerHp > 25) playerHpFill.style.background = '#f1c40f';
+        const pct = (playerHp / maxPlayerHp) * 100;
+        playerHpFill.style.width = pct + '%';
+        hpText.innerText = `ЗДОРОВЬЕ: ${Math.ceil(playerHp)} / ${maxPlayerHp}`;
+        if (pct > 50) playerHpFill.style.background = '#2ecc71';
+        else if (pct > 25) playerHpFill.style.background = '#f1c40f';
         else playerHpFill.style.background = '#e74c3c';
     }
 
     function spawnBerry() {
-        if (isGameOver) return;
+        if (isGameOver || isPaused) return;
         if (spawnedInWave >= getWaveSize()) return;
         
         const waveSpeedBonus = (currentWave - 1) * 0.15;
+        const charRect = document.getElementById('character-container').getBoundingClientRect();
+        const targetX = charRect.left + charRect.width / 2;
+        const targetY = charRect.top + charRect.height / 2;
+
+        const startX = gameCanvas.width;
+        const startY = 0;
+
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        const baseSpeed = (2.5 + Math.random() * 1.5 + waveSpeedBonus) * speedMultiplier;
         
         berries.push({
             img: berryImages[Math.floor(Math.random() * berryImages.length)],
-            x: gameCanvas.width,
-            y: -BERRY_SIZE / 2,
-            vx: -(1.5 + Math.random() * 1.5 + waveSpeedBonus),
-            vy: 0.8 + Math.random() * 1 + (waveSpeedBonus / 2),
+            x: startX,
+            y: startY,
+            vx: (dx / dist) * baseSpeed,
+            vy: (dy / dist) * baseSpeed,
             hp: 100,
             maxHp: 100,
             hitTimer: 0,
@@ -326,14 +428,26 @@
     function spawnBoss() {
         if (bossActive) return;
         bossActive = true;
-        const bossHp = 250 + (Math.floor(currentWave / 5) - 1) * 100;
+        const bossHp = 250 + (Math.floor(currentWave / 5) - 1) * 150;
         
+        const charRect = document.getElementById('character-container').getBoundingClientRect();
+        const targetX = charRect.left + charRect.width / 2;
+        const targetY = charRect.top + charRect.height / 2;
+        
+        const startX = gameCanvas.width;
+        const startY = 0;
+
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const bossSpeed = 0.8 * speedMultiplier;
+
         berries.push({
             img: bossImage,
-            x: gameCanvas.width,
-            y: -BOSS_SIZE / 3,
-            vx: -0.4, 
-            vy: 0.2,
+            x: startX,
+            y: startY,
+            vx: (dx / dist) * bossSpeed, 
+            vy: (dy / dist) * bossSpeed,
             hp: bossHp,
             maxHp: bossHp,
             hitTimer: 0,
@@ -364,34 +478,19 @@
         }, 30);
     }
 
-    function playShootSound() {
-        try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-        } catch(e) {}
-    }
-
     gameCanvas.onmousedown = (e) => {
-        if (isGameOver || !canShoot) return;
+        if (isGameOver || isPaused || !canShoot) return;
         
         const mouseX = e.clientX;
         const mouseY = e.clientY;
 
         for (let i = berries.length - 1; i >= 0; i--) {
             const b = berries[i];
-            const padding = b.size * 0.15;
+            const padding = b.size * 0.2;
             if (mouseX >= b.x + padding && mouseX <= b.x + b.size - padding &&
                 mouseY >= b.y + padding && mouseY <= b.y + b.size - padding) {
                 
-                const damage = 25 + Math.floor(Math.random() * 11);
+                const damage = (basePlayerDamage - 5) + Math.floor(Math.random() * 11);
                 b.hp -= damage;
                 b.hitTimer = 5;
 
@@ -400,7 +499,7 @@
                         bossActive = false;
                         bossesDefeated++;
                         berries.splice(i, 1);
-                        startNextWave();
+                        showUpgradeMenu();
                     } else {
                         berries.splice(i, 1);
                         checkWaveProgress();
@@ -411,16 +510,47 @@
         }
 
         flashes.push({ x: 260, y: window.innerHeight - 120, life: 10 });
-        playShootSound();
         startCooldown();
     };
+
+    function showUpgradeMenu() {
+        isPaused = true;
+        clearTimeout(spawnTimeout);
+        upgradeMenu.style.display = 'flex';
+    }
+
+    function applyUpgrade(type) {
+        levels[type]++;
+        document.getElementById(`lvl-${type}`).innerText = `Lvl ${levels[type]}`;
+
+        switch(type) {
+            case 'maxHp':
+                maxPlayerHp += 25;
+                playerHp = maxPlayerHp; // Лечим при прокачке
+                break;
+            case 'berrySpeed':
+                speedMultiplier *= 0.9;
+                break;
+            case 'playerDamage':
+                basePlayerDamage += 10;
+                break;
+            case 'berryDamage':
+                damageReduction *= 0.85;
+                break;
+        }
+
+        updatePlayerHpUI();
+        upgradeMenu.style.display = 'none';
+        isPaused = false;
+        startNextWave();
+    }
 
     function startNextWave() {
         currentWave++;
         spawnedInWave = 0;
         waveInfoText.innerText = `ВОЛНА ${currentWave}`;
         clearTimeout(spawnTimeout);
-        setTimeout(spawnBerry, 2000);
+        setTimeout(spawnBerry, 1500);
     }
 
     function checkWaveProgress() {
@@ -429,7 +559,7 @@
                 spawnBoss();
                 return;
             }
-            if (!bossActive) {
+            if (!bossActive && !isPaused) {
                 startNextWave();
             }
         }
@@ -437,15 +567,18 @@
 
     function update() {
         if (isGameOver) return;
+        if (isPaused) {
+            requestAnimationFrame(update);
+            return;
+        }
 
         ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
         const charRect = character.getBoundingClientRect();
 
-        // Хитбокс персонажа
-        const charHitX = charRect.left;
-        const charHitY = charRect.top;
-        const charHitW = charRect.width;
-        const charHitH = charRect.height;
+        const charHitX = charRect.left + 40;
+        const charHitY = charRect.top + 40;
+        const charHitW = charRect.width - 80;
+        const charHitH = charRect.height - 40;
 
         for (let i = berries.length - 1; i >= 0; i--) {
             const b = berries[i];
@@ -460,44 +593,37 @@
             ctx.drawImage(b.img, b.x, b.y, b.size, b.size);
             ctx.restore();
 
-            // ОБНОВЛЕННЫЙ ИНДИКАТОР HP (Овальный в середине с текстом)
             const centerX = b.x + b.size / 2;
             const centerY = b.y + b.size / 2;
-            const ovalW = b.isBoss ? 100 : 70;
-            const ovalH = b.isBoss ? 40 : 30;
+            const ovalW = b.isBoss ? 110 : 80;
+            const ovalH = b.isBoss ? 45 : 35;
 
-            // Отрисовка овала фона
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
             ctx.beginPath();
             ctx.ellipse(centerX, centerY, ovalW / 2, ovalH / 2, 0, 0, Math.PI * 2);
             ctx.fill();
-            
-            // Отрисовка обводки овала
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Текст HP в середине
             ctx.fillStyle = b.hp < 30 ? '#ff416c' : '#ffffff';
-            ctx.font = `bold ${b.isBoss ? 18 : 14}px Arial`;
+            ctx.font = `bold ${b.isBoss ? 20 : 16}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(Math.max(0, b.hp), centerX, centerY);
 
-            // КОЛЛИЗИЯ: Увеличенная зона по вертикали, чтобы не пролетали сверху
-            // Мы проверяем не только центр ягоды, но и ее нижнюю часть
-            const berryHitX = b.x + b.size * 0.1;
-            const berryHitY = b.y; // С самого верха картинки ягоды
-            const berryHitW = b.size * 0.8;
-            const berryHitH = b.size; // На всю высоту ягоды
+            const bHitX = b.x + b.size * 0.3;
+            const bHitY = b.y + b.size * 0.3;
+            const bHitW = b.size * 0.4;
+            const bHitH = b.size * 0.4;
 
-            if (berryHitX < charHitX + charHitW &&
-                berryHitX + berryHitW > charHitX &&
-                berryHitY < charHitY + charHitH &&
-                berryHitY + berryHitH > charHitY) {
+            if (bHitX < charHitX + charHitW &&
+                bHitX + bHitW > charHitX &&
+                bHitY < charHitY + charHitH &&
+                bHitY + bHitH > charHitY) {
                 
-                const damage = b.isBoss ? 100 : 34;
-                playerHp -= damage;
+                const rawDamage = b.isBoss ? 100 : 34;
+                playerHp -= rawDamage * damageReduction;
                 updatePlayerHpUI();
                 
                 character.style.filter = 'brightness(0.5) sepia(1) hue-rotate(-50deg) saturate(5)';
@@ -516,24 +642,19 @@
                 }
             }
 
-            if (b.x < -b.size || b.y > gameCanvas.height) {
+            if (b.x < -b.size || b.y > gameCanvas.height + b.size || b.x > gameCanvas.width + b.size || b.y < -b.size) {
                 const wasBoss = b.isBoss;
                 berries.splice(i, 1);
                 if (wasBoss) {
                     bossActive = false;
-                    startNextWave();
+                    showUpgradeMenu();
                 } else {
                     checkWaveProgress();
                 }
             }
         }
 
-        if (berries.length === 0 && spawnedInWave >= getWaveSize()) {
-            checkWaveProgress();
-        }
-
-        for (let i = flashes.length - 1; i >= 0; i--) {
-            const f = flashes[i];
+        for (let f of flashes) {
             const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 60);
             grad.addColorStop(0, 'white');
             grad.addColorStop(0.4, 'orange');
@@ -543,8 +664,8 @@
             ctx.arc(f.x, f.y, 60, 0, Math.PI * 2);
             ctx.fill();
             f.life--;
-            if (f.life <= 0) flashes.splice(i, 1);
         }
+        flashes = flashes.filter(f => f.life > 0);
 
         requestAnimationFrame(update);
     }
@@ -560,8 +681,19 @@
 
     function restartGame() {
         isGameOver = false;
+        isPaused = false;
         canShoot = true;
         playerHp = 100;
+        maxPlayerHp = 100;
+        basePlayerDamage = 30;
+        speedMultiplier = 1.0;
+        damageReduction = 1.0;
+        levels = { maxHp: 0, berrySpeed: 0, playerDamage: 0, berryDamage: 0 };
+        
+        Object.keys(levels).forEach(k => {
+            document.getElementById(`lvl-${k}`).innerText = `Lvl 0`;
+        });
+
         currentWave = 1;
         spawnedInWave = 0;
         bossesDefeated = 0;
@@ -572,8 +704,8 @@
         updatePlayerHpUI();
         waveInfoText.innerText = `ВОЛНА 1`;
         gameOverScreen.style.display = 'none';
+        upgradeMenu.style.display = 'none';
         spawnBerry();
-        update();
     }
 
     window.addEventListener('resize', resize);
