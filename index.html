@@ -354,14 +354,13 @@
     let bossesDefeated = 0;
     let bossActive = false;
 
-    // Сделаем размеры ягод зависимыми от ширины экрана для мобилок
     function getBerrySize() { return Math.min(300, window.innerWidth * 0.4); }
     function getBossSize() { return Math.min(550, window.innerWidth * 0.7); }
 
     function startGameLoop() {
         resize();
         spawnBerry();
-        update();
+        requestAnimationFrame(update);
     }
 
     function resize() {
@@ -433,6 +432,7 @@
 
         spawnedInWave++;
         const delay = Math.max(800, 3000 - (currentWave * 150));
+        clearTimeout(spawnTimeout);
         spawnTimeout = setTimeout(spawnBerry, delay);
     }
 
@@ -527,7 +527,6 @@
         startCooldown();
     }
 
-    // Обработка и мыши, и касаний
     gameCanvas.addEventListener('mousedown', (e) => {
         handleInput(e.clientX, e.clientY);
     });
@@ -591,8 +590,7 @@
     }
 
     function update() {
-        if (isGameOver) return;
-        if (isPaused) {
+        if (isGameOver || isPaused) {
             requestAnimationFrame(update);
             return;
         }
@@ -600,7 +598,6 @@
         ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
         const charRect = character.getBoundingClientRect();
 
-        // Адаптивная зона коллизии персонажа
         const charHitX = charRect.left + (charRect.width * 0.1);
         const charHitY = charRect.top + (charRect.height * 0.1);
         const charHitW = charRect.width * 0.8;
@@ -619,7 +616,6 @@
             ctx.drawImage(b.img, b.x, b.y, b.size, b.size);
             ctx.restore();
 
-            // HP Bar над ягодой
             const centerX = b.x + b.size / 2;
             const centerY = b.y + b.size / 2;
             const ovalW = b.isBoss ? b.size * 0.25 : b.size * 0.35;
@@ -639,7 +635,6 @@
             ctx.textBaseline = 'middle';
             ctx.fillText(Math.max(0, b.hp), centerX, centerY);
 
-            // Проверка столкновения с игроком
             const bHitX = b.x + b.size * 0.3;
             const bHitY = b.y + b.size * 0.3;
             const bHitW = b.size * 0.4;
@@ -670,7 +665,6 @@
                 }
             }
 
-            // Выход за границы
             if (b.x < -b.size || b.y > gameCanvas.height + b.size || b.x > gameCanvas.width + b.size || b.y < -b.size) {
                 const wasBoss = b.isBoss;
                 berries.splice(i, 1);
@@ -709,37 +703,45 @@
     }
 
     function restartGame() {
-        isGameOver = false;
-        isPaused = false;
-        canShoot = true;
+        clearTimeout(spawnTimeout);
+        
+        // Сброс основных параметров
         playerHp = 100;
         maxPlayerHp = 100;
         basePlayerDamage = 30;
         speedMultiplier = 1.0;
         damageReduction = 1.0;
-        levels = { maxHp: 0, berrySpeed: 0, playerDamage: 0, berryDamage: 0 };
-        
-        Object.keys(levels).forEach(k => {
-            document.getElementById(`lvl-${k}`).innerText = `Lvl 0`;
-        });
-
         currentWave = 1;
         spawnedInWave = 0;
         bossesDefeated = 0;
         bossActive = false;
         berries = [];
         flashes = [];
+        
+        // Сброс уровней прокачки в UI
+        levels = { maxHp: 0, berrySpeed: 0, playerDamage: 0, berryDamage: 0 };
+        Object.keys(levels).forEach(k => {
+            const lvlEl = document.getElementById(`lvl-${k}`);
+            if (lvlEl) lvlEl.innerText = `Lvl 0`;
+        });
+
+        // Сброс интерфейса
         character.style.filter = 'none';
         updatePlayerHpUI();
         waveInfoText.innerText = `ВОЛНА 1`;
         gameOverScreen.style.display = 'none';
         upgradeMenu.style.display = 'none';
+        
+        // ВАЖНО: сначала снимаем флаг, потом запускаем спавн
+        isGameOver = false;
+        isPaused = false;
+        canShoot = true;
+        
         spawnBerry();
     }
 
     window.addEventListener('resize', () => {
         resize();
-        // При изменении размера обновляем позиции ягод, чтобы они не «прыгали»
     });
     updatePlayerHpUI();
 </script>
