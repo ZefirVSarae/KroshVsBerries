@@ -46,11 +46,19 @@
             pointer-events: all;
         }
 
-        #wave-info {
+        #ui-top {
             position: absolute;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        #wave-info {
             background: rgba(0, 0, 0, 0.6);
             color: white;
             padding: 8px 20px;
@@ -58,11 +66,38 @@
             font-family: 'Arial', sans-serif;
             font-size: clamp(16px, 4vw, 24px);
             font-weight: bold;
-            z-index: 50;
             border: 2px solid #fff;
-            pointer-events: none;
-            text-align: center;
             white-space: nowrap;
+        }
+
+        #pause-btn {
+            width: 45px;
+            height: 45px;
+            background: black;
+            border: 2px solid white;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            pointer-events: all;
+            transition: transform 0.1s;
+        }
+
+        #pause-btn:active {
+            transform: scale(0.9);
+        }
+
+        .pause-icon {
+            display: flex;
+            gap: 4px;
+        }
+
+        .pause-bar {
+            width: 4px;
+            height: 16px;
+            background: white;
+            border-radius: 2px;
         }
 
         #player-ui {
@@ -148,7 +183,7 @@
             pointer-events: none;
         }
 
-        #upgrade-menu {
+        #upgrade-menu, #pause-menu {
             position: fixed;
             top: 0;
             left: 0;
@@ -164,6 +199,18 @@
             font-family: 'Arial', sans-serif;
             padding: 20px;
             box-sizing: border-box;
+        }
+
+        .menu-btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            background: #8EB028;
+            border: none;
+            color: white;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-weight: bold;
         }
 
         .upgrade-card {
@@ -185,9 +232,6 @@
             transform: scale(1.02);
             background: #34495e;
         }
-
-        .upgrade-card h3 { margin: 0; font-size: 16px; }
-        .upgrade-card p { margin: 3px 0 0; font-size: 12px; color: #bdc3c7; }
 
         #game-over {
             position: fixed;
@@ -229,7 +273,15 @@
 <body>
 
 <div id="game-container">
-    <div id="wave-info">ВОЛНА 1</div>
+    <div id="ui-top">
+        <div id="wave-info">ВОЛНА 1</div>
+        <div id="pause-btn" onclick="togglePause()">
+            <div class="pause-icon">
+                <div class="pause-bar"></div>
+                <div class="pause-bar"></div>
+            </div>
+        </div>
+    </div>
     
     <div id="player-ui">
         <div id="hp-text">ЗДОРОВЬЕ: 100 / 100</div>
@@ -247,6 +299,15 @@
             <div id="cooldown-indicator">0.3</div>
         </div>
     </div>
+</div>
+
+<div id="pause-menu">
+    <h1 style="color: #fff; margin-bottom: 10px;">ПАУЗА</h1>
+    <div id="pause-stats" style="text-align: center; margin-bottom: 20px;">
+        <p id="pause-wave-text" style="font-size: 1.2rem; margin: 5px 0;">Волна: 1</p>
+        <p id="pause-bosses-text" style="font-size: 1.2rem; margin: 5px 0;">Повержено боссов: 0</p>
+    </div>
+    <button class="menu-btn" onclick="togglePause()">ПРОДОЛЖИТЬ</button>
 </div>
 
 <div id="upgrade-menu">
@@ -296,11 +357,14 @@
     const ctx = gameCanvas.getContext('2d');
     
     const upgradeMenu = document.getElementById('upgrade-menu');
+    const pauseMenu = document.getElementById('pause-menu');
     const gameOverScreen = document.getElementById('game-over');
     const deathReasonText = document.getElementById('death-reason');
     const waveInfoText = document.getElementById('wave-info');
     const finalWaveText = document.getElementById('final-wave');
     const finalBossesText = document.getElementById('final-bosses');
+    const pauseWaveText = document.getElementById('pause-wave-text');
+    const pauseBossesText = document.getElementById('pause-bosses-text');
     const character = document.getElementById('character');
     const playerHpFill = document.getElementById('player-hp-fill');
     const hpText = document.getElementById('hp-text');
@@ -398,14 +462,31 @@
         else playerHpFill.style.background = '#e74c3c';
     }
 
+    function togglePause() {
+        if (isGameOver) return;
+        isPaused = !isPaused;
+        if (isPaused) {
+            pauseWaveText.innerText = `Волна: ${currentWave}`;
+            pauseBossesText.innerText = `Повержено боссов: ${bossesDefeated}`;
+            pauseMenu.style.display = 'flex';
+            clearTimeout(spawnTimeout);
+        } else {
+            pauseMenu.style.display = 'none';
+            spawnBerry();
+        }
+    }
+
     function spawnBerry() {
         if (isGameOver || isPaused) return;
         if (spawnedInWave >= getWaveSize()) return;
         
+        const size = getBerrySize();
         const waveSpeedBonus = (currentWave - 1) * 0.15;
         const charRect = document.getElementById('character-container').getBoundingClientRect();
-        const targetX = charRect.left + charRect.width / 2;
-        const targetY = charRect.top + charRect.height / 2;
+        
+        // Целимся строго в центр персонажа с учетом размера ягоды
+        const targetX = charRect.left + charRect.width / 2 - size / 2;
+        const targetY = charRect.top + charRect.height / 2 - size / 2;
 
         const startX = gameCanvas.width;
         const startY = Math.random() * (gameCanvas.height * 0.3);
@@ -415,7 +496,6 @@
         const dist = Math.sqrt(dx * dx + dy * dy);
         
         const baseSpeed = (2.5 + Math.random() * 1.5 + waveSpeedBonus) * speedMultiplier;
-        const size = getBerrySize();
 
         berries.push({
             img: berryImages[Math.floor(Math.random() * berryImages.length)],
@@ -440,10 +520,12 @@
         if (bossActive) return;
         bossActive = true;
         const bossHp = 250 + (Math.floor(currentWave / 5) - 1) * 150;
+        const size = getBossSize();
         
         const charRect = document.getElementById('character-container').getBoundingClientRect();
-        const targetX = charRect.left + charRect.width / 2;
-        const targetY = charRect.top + charRect.height / 2;
+        // Босс целится также в центр
+        const targetX = charRect.left + charRect.width / 2 - size / 2;
+        const targetY = charRect.top + charRect.height / 2 - size / 2;
         
         const startX = gameCanvas.width;
         const startY = 0;
@@ -452,7 +534,6 @@
         const dy = targetY - startY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const bossSpeed = 0.8 * speedMultiplier;
-        const size = getBossSize();
 
         berries.push({
             img: bossImage,
@@ -598,10 +679,11 @@
         ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
         const charRect = character.getBoundingClientRect();
 
-        const charHitX = charRect.left + (charRect.width * 0.1);
-        const charHitY = charRect.top + (charRect.height * 0.1);
-        const charHitW = charRect.width * 0.8;
-        const charHitH = charRect.height * 0.8;
+        // Область получения урона персонажем
+        const charHitX = charRect.left + (charRect.width * 0.2);
+        const charHitY = charRect.top + (charRect.height * 0.2);
+        const charHitW = charRect.width * 0.6;
+        const charHitH = charRect.height * 0.6;
 
         for (let i = berries.length - 1; i >= 0; i--) {
             const b = berries[i];
@@ -635,10 +717,11 @@
             ctx.textBaseline = 'middle';
             ctx.fillText(Math.max(0, b.hp), centerX, centerY);
 
-            const bHitX = b.x + b.size * 0.3;
-            const bHitY = b.y + b.size * 0.3;
-            const bHitW = b.size * 0.4;
-            const bHitH = b.size * 0.4;
+            // Область столкновения ягоды (центр спрайта)
+            const bHitX = b.x + b.size * 0.35;
+            const bHitY = b.y + b.size * 0.35;
+            const bHitW = b.size * 0.3;
+            const bHitH = b.size * 0.3;
 
             if (bHitX < charHitX + charHitW &&
                 bHitX + bHitW > charHitX &&
@@ -705,7 +788,6 @@
     function restartGame() {
         clearTimeout(spawnTimeout);
         
-        // Сброс основных параметров
         playerHp = 100;
         maxPlayerHp = 100;
         basePlayerDamage = 30;
@@ -718,21 +800,19 @@
         berries = [];
         flashes = [];
         
-        // Сброс уровней прокачки в UI
         levels = { maxHp: 0, berrySpeed: 0, playerDamage: 0, berryDamage: 0 };
         Object.keys(levels).forEach(k => {
             const lvlEl = document.getElementById(`lvl-${k}`);
             if (lvlEl) lvlEl.innerText = `Lvl 0`;
         });
 
-        // Сброс интерфейса
         character.style.filter = 'none';
         updatePlayerHpUI();
         waveInfoText.innerText = `ВОЛНА 1`;
         gameOverScreen.style.display = 'none';
         upgradeMenu.style.display = 'none';
+        pauseMenu.style.display = 'none';
         
-        // ВАЖНО: сначала снимаем флаг, потом запускаем спавн
         isGameOver = false;
         isPaused = false;
         canShoot = true;
